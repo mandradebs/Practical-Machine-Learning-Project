@@ -1,0 +1,78 @@
+---
+title: "Practical Machine Learning Project"
+author: "Marco Antonio Andrade Barrera"
+date: "Sunday, Jun 21, 2015"
+output: html_document
+---
+
+This project is part of the work done for data science specialization offered on Coursera website . In particular, this work is part of the activities of the course Practical Machine Learning.
+The data used in this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the aim is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har.
+
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. The following code load training and testing sets. It also removes variables with NA's and near zero variance predictors in trainings data set.
+
+```{r cache=TRUE,message=FALSE,warning=FALSE}
+library(caret)
+setwd("D:/Marco/Cursos/Data Science/07 Machine learning/W3/project")
+training <- read.csv("data/pml-training.csv")
+testing <- read.csv("data/pml-testing.csv")
+
+#removing vars with NA's
+training <- training[,-which(apply(training,MARGIN = 2,FUN = function(c) sum(is.na(c)) != 0))]
+
+#removing near zero variance predictors
+nsv <- nearZeroVar(training, saveMetrics = T)
+training <- training[, !nsv$nzv]
+
+#removing all factors
+#newTraining <- training[,-which(apply(training,MARGIN = 2,FUN = function(c) class(c)))]
+```
+
+After filtering, training data set had `r nrow(training)` rows or samples and `r ncol(training)-1` posible predictors. Ideally, we should use all `r ncol(training)-1` predictor, but in order to cut down on execution time, an other filter using correlations between *classe* response and all predictors is usefull. I used predictors with correlation greater than 0.1.
+
+```{r cache=TRUE}
+cor <- abs(sapply(colnames(training[, -ncol(training)]), function(x) cor(as.numeric(training[, x]), as.numeric(training$classe), method = "spearman")))
+
+training <- training[,-1]
+training <- training[,c(ncol(training),which(cor>0.1))]
+```
+
+Now, the new data set has `r ncol(training)-2` potential predictors. Even with this filter we have a lot of possible predictors and samples. After hours of waiting for the machine learnings argorithms finished, I decided to take a sub-sample of 10% of the training set. My PC is an AMD Atholon(tm) II Processor 2.71 GHz and 4GB of RAM. OF course, I know this desicion cause a more weak estimation. However, when submitting the 20 predictions to the Coursera web-site, I got 20/20.
+
+In the next chunk, I fit a model with boosting algorithm and 10-fold cross validation in a sub-sample of 10%.
+
+```{r cache=TRUE, warning=F, message=F}
+set.seed(5)
+modFit <- train(classe~.,method = "gbm", verbose=F, data=training[sample(1:nrow(training),trunc(0.1*nrow(training))),], trControl = trainControl(method = "cv",number = 10))
+modFit
+plot(modFit, ylim = c(0.7, 1))
+```
+
+In the next code, a random forest model is fitting in a subsample of 10%.
+```{r cache=TRUE, warning=F, message=F}
+set.seed(5)
+rfFit <- train(classe ~ ., method = "rf", data = training[sample(1:nrow(training),trunc(0.1*nrow(training))),], importance = T, trControl = trainControl(method = "cv", number = 10, verboseIter = F))
+rfFit
+plot(rfFit, ylim = c(0.7, 1))
+```
+
+Based on the abode graphics, both models have similar accuracy, where random forest being little better. The following chunks makes the estimations of 20 samples in the testing set.
+
+```{r warning=F, message=F}
+prediction <- as.character(predict(modFit, testing))
+prediction
+```
+
+```{r}
+# write prediction files
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("./prediction/problem_id_", i, ".txt")
+    write.table(x[i], file = filename, quote = FALSE, row.names = FALSE, col.names = FALSE)
+  }
+}
+pml_write_files(prediction)
+```
+
